@@ -1,0 +1,321 @@
+import React, { useState } from 'react';
+import { ClinicalEvolutionState, VitalSigns } from '../types/clinical';
+import { Activity, Heart, Thermometer, Wind, Droplets, Droplet, ShieldAlert, Brain, Zap, AlertTriangle, Skull, RefreshCw } from 'lucide-react';
+
+interface VitalSignsMonitorProps {
+  vitals: VitalSigns;
+  baselineVitals?: VitalSigns;
+  statCount?: number;
+  triageLevel: string;
+  onOpenStat?: () => void;
+  onRefreshVitals?: () => void;
+  showStatButton?: boolean;
+  evolutionState?: ClinicalEvolutionState;
+  isDeceased?: boolean;
+}
+
+export const VitalSignsMonitor: React.FC<VitalSignsMonitorProps> = ({
+  vitals,
+  baselineVitals,
+  statCount = 0,
+  onOpenStat,
+  onRefreshVitals,
+  showStatButton = false,
+  evolutionState,
+  isDeceased = false,
+}) => {
+  const deceased = Boolean(
+    isDeceased || vitals.heartRate === 0 || (vitals.bloodPressure || '').startsWith('0/')
+  );
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefreshClick = () => {
+    if (!onRefreshVitals || deceased) return;
+    setIsRefreshing(true);
+    onRefreshVitals();
+    window.setTimeout(() => setIsRefreshing(false), 380);
+  };
+  const bpMatch = vitals.bloodPressure.match(/(\d+)\/(\d+)/);
+  const baseBpMatch = baselineVitals?.bloodPressure.match(/(\d+)\/(\d+)/);
+  let mapText = '--';
+  if (bpMatch) {
+    const sys = parseInt(bpMatch[1], 10);
+    const dia = parseInt(bpMatch[2], 10);
+    const map = Math.round(dia + (sys - dia) / 3);
+    mapText = `${map} mmHg`;
+  }
+
+  const sysDiff =
+    bpMatch && baseBpMatch ? parseInt(bpMatch[1], 10) - parseInt(baseBpMatch[1], 10) : 0;
+  const hrDiff = baselineVitals ? vitals.heartRate - baselineVitals.heartRate : 0;
+  const rrDiff = baselineVitals ? vitals.respiratoryRate - baselineVitals.respiratoryRate : 0;
+  const tempDiff = baselineVitals
+    ? Number((vitals.temperature - baselineVitals.temperature).toFixed(1))
+    : 0;
+  const spo2Diff = baselineVitals ? vitals.oxygenSaturation - baselineVitals.oxygenSaturation : 0;
+  const hasGlucose = typeof vitals.bloodGlucose === 'number' && !Number.isNaN(vitals.bloodGlucose);
+  const glucDiff =
+    hasGlucose && typeof baselineVitals?.bloodGlucose === 'number'
+      ? (vitals.bloodGlucose as number) - baselineVitals.bloodGlucose
+      : 0;
+  const gcsDiff = baselineVitals ? vitals.glasgow - baselineVitals.glasgow : 0;
+
+  const isTachycardic = vitals.heartRate > 100;
+  const isBradycardic = vitals.heartRate < 50;
+  const isHypotensive = bpMatch && parseInt(bpMatch[1], 10) < 90;
+  const isFebrile = vitals.temperature >= 38.0;
+  const isHypoxemic = vitals.oxygenSaturation < 94;
+  const isTachypneic = vitals.respiratoryRate > 20;
+  const isBradypneic = vitals.respiratoryRate <= 10;
+  const isLowGlasgow = vitals.glasgow <= 12;
+
+  const isHypoglycemic = hasGlucose && (vitals.bloodGlucose as number) < 70;
+  const isSevereHyperglycemic = hasGlucose && (vitals.bloodGlucose as number) >= 250;
+  const isModerateHyperglycemic =
+    hasGlucose && (vitals.bloodGlucose as number) >= 180 && (vitals.bloodGlucose as number) < 250;
+
+  return (
+    <div className="bg-[#030917] border-b border-blue-900/60 text-white shadow-lg">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 py-2.5">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 sm:gap-3">
+          {/* Monitor Lead / Status + Discreet Refresh + STAT Button */}
+          <div className="flex flex-wrap items-center justify-between sm:justify-start gap-2 sm:gap-3">
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 text-[11px] sm:text-xs tracking-wider uppercase font-semibold text-blue-400">
+                <Activity className="w-4 h-4 text-blue-400 shrink-0" />
+                <span>Signos Vitales</span>
+              </div>
+              {onRefreshVitals && !deceased && (
+                <button
+                  type="button"
+                  onClick={handleRefreshClick}
+                  title="Actualizar / reevaluar signos vitales ahora"
+                  aria-label="Actualizar signos vitales"
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[#07132B]/90 hover:bg-[#0D2149] border border-blue-900/70 text-[10px] font-medium text-blue-300/85 hover:text-white transition-colors cursor-pointer"
+                >
+                  <RefreshCw className={`w-3 h-3 shrink-0 transition-transform ${isRefreshing ? 'animate-spin' : ''}`} />
+                  <span className="hidden sm:inline">Actualizar</span>
+                </button>
+              )}
+              <div className="h-3.5 w-px bg-blue-900/70 hidden sm:block" />
+              <div className="hidden sm:flex items-center gap-1.5 text-[11px] sm:text-xs text-blue-200 min-w-0">
+                <ShieldAlert className={`w-3.5 h-3.5 shrink-0 ${deceased ? 'text-rose-400' : 'text-sky-400'}`} />
+                <span className={`font-medium truncate ${deceased ? 'text-rose-300 font-bold' : 'text-white'}`}>
+                  {deceased
+                    ? 'ASISTOLIA · FALLECIDO'
+                    : statCount > 0
+                      ? `Monitor en Vivo · ${statCount} STAT`
+                      : 'Monitorización Clínica'}
+                </span>
+              </div>
+            </div>
+
+            {showStatButton && onOpenStat && (
+              <button
+                type="button"
+                onClick={deceased ? undefined : onOpenStat}
+                disabled={deceased}
+                className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 whitespace-nowrap shrink-0 shadow-md transition-colors ${
+                  deceased
+                    ? 'bg-rose-950/90 border border-rose-700 text-rose-300 cursor-not-allowed opacity-85'
+                    : 'bg-rose-600 hover:bg-rose-500 text-white cursor-pointer'
+                }`}
+                title={
+                  deceased
+                    ? 'Paciente en asistolia tras muerte inmediata por iatrogenia'
+                    : 'Aplicar tratamiento STAT de emergencia y conversar con el paciente'
+                }
+              >
+                {deceased ? <Skull className="w-4 h-4 shrink-0" /> : <Zap className="w-4 h-4 shrink-0" />}
+                <span>{deceased ? 'Asistolia · Fallecido' : 'Aplicación STAT'}</span>
+                {!deceased && statCount > 0 && (
+                  <span className="text-[11px] font-mono tabular-nums bg-black/30 px-1.5 py-0.5 rounded">
+                    {statCount}
+                  </span>
+                )}
+              </button>
+            )}
+          </div>
+
+          {/* Vitals Readings Grid (2 cols on mobile, flex on desktop) */}
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 font-mono tabular-nums text-xs">
+            {/* Presión Arterial */}
+            <div
+              className={`col-span-2 sm:col-span-1 flex items-center justify-between sm:justify-start gap-2 px-2.5 py-1.5 rounded-lg border transition-colors ${
+                isHypotensive
+                  ? 'bg-rose-950/50 border-rose-700/70 text-rose-200'
+                  : 'bg-[#07132B] border-blue-900/70 text-white'
+              }`}
+            >
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] uppercase font-sans text-blue-300 font-semibold">PA</span>
+                <span className="text-sm font-bold font-mono tracking-tight">
+                  {vitals.bloodPressure.split(' ')[0]}
+                </span>
+                <span className="text-[10px] text-blue-300/80">mmHg</span>
+                {sysDiff !== 0 && (
+                  <span className="text-[10px] font-bold text-sky-300">
+                    ({sysDiff > 0 ? '+' : ''}{sysDiff})
+                  </span>
+                )}
+              </div>
+              <div className="text-[10px] text-blue-300/80 font-sans border-l border-blue-800/70 pl-2">
+                PAM: <span className="font-mono text-white font-semibold">{mapText}</span>
+              </div>
+            </div>
+
+            {/* Frecuencia Cardíaca */}
+            <div
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-colors ${
+                isBradycardic
+                  ? 'bg-rose-950/50 border-rose-700/70 text-rose-200'
+                  : isTachycardic
+                    ? 'bg-amber-950/40 border-amber-700/60 text-amber-200'
+                    : 'bg-[#07132B] border-blue-900/70 text-blue-200'
+              }`}
+            >
+              <Heart className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+              <span className="text-[10px] uppercase font-sans text-blue-300">FC</span>
+              <span className="text-sm font-bold font-mono tracking-tight text-white">{vitals.heartRate}</span>
+              <span className="text-[10px] text-blue-300/80">lpm</span>
+              {hrDiff !== 0 && (
+                <span className="text-[10px] font-bold text-sky-300">
+                  ({hrDiff > 0 ? '+' : ''}{hrDiff})
+                </span>
+              )}
+            </div>
+
+            {/* Frecuencia Respiratoria */}
+            <div
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-colors ${
+                isBradypneic
+                  ? 'bg-rose-950/50 border-rose-700/70 text-rose-200'
+                  : isTachypneic
+                    ? 'bg-amber-950/40 border-amber-700/60 text-amber-200'
+                    : 'bg-[#07132B] border-blue-900/70 text-white'
+              }`}
+            >
+              <Wind className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+              <span className="text-[10px] uppercase font-sans text-blue-300">FR</span>
+              <span className="text-sm font-bold font-mono tracking-tight">{vitals.respiratoryRate}</span>
+              <span className="text-[10px] text-blue-300/80">rpm</span>
+              {rrDiff !== 0 && (
+                <span className="text-[10px] font-bold text-sky-300">
+                  ({rrDiff > 0 ? '+' : ''}{rrDiff})
+                </span>
+              )}
+            </div>
+
+            {/* Temperatura */}
+            <div
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-colors ${
+                isFebrile
+                  ? 'bg-rose-950/50 border-rose-700/70 text-rose-200'
+                  : 'bg-[#07132B] border-blue-900/70 text-white'
+              }`}
+            >
+              <Thermometer className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+              <span className="text-[10px] uppercase font-sans text-blue-300">Temp</span>
+              <span className="text-sm font-bold font-mono tracking-tight">{vitals.temperature.toFixed(1)}</span>
+              <span className="text-[10px] text-blue-300/80">°C</span>
+              {Math.abs(tempDiff) >= 0.05 && (
+                <span className="text-[10px] font-bold text-sky-300">
+                  ({tempDiff > 0 ? '+' : ''}{tempDiff.toFixed(1)})
+                </span>
+              )}
+            </div>
+
+            {/* SpO2 */}
+            <div
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-colors ${
+                isHypoxemic
+                  ? 'bg-rose-950/50 border-rose-700/70 text-rose-200'
+                  : 'bg-[#07132B] border-blue-900/70 text-white'
+              }`}
+            >
+              <Droplets className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+              <span className="text-[10px] uppercase font-sans text-blue-300">SpO₂</span>
+              <span className="text-sm font-bold font-mono tracking-tight">{vitals.oxygenSaturation}</span>
+              <span className="text-[10px] text-blue-300/80">%</span>
+              {spo2Diff !== 0 && (
+                <span className={`text-[10px] font-bold ${spo2Diff > 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
+                  ({spo2Diff > 0 ? '+' : ''}{spo2Diff})
+                </span>
+              )}
+            </div>
+
+            {/* Glucemia Capilar (Glucometría) */}
+            <div
+              title="Glucemia capilar (Glucometría)"
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-colors ${
+                isHypoglycemic || isSevereHyperglycemic
+                  ? 'bg-rose-950/50 border-rose-700/70 text-rose-200'
+                  : isModerateHyperglycemic
+                  ? 'bg-amber-950/40 border-amber-700/60 text-amber-200'
+                  : 'bg-[#07132B] border-blue-900/70 text-white'
+              }`}
+            >
+              <Droplet className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="text-[10px] uppercase font-sans text-blue-300">Gluc</span>
+              <span className="text-sm font-bold font-mono tracking-tight">
+                {hasGlucose ? vitals.bloodGlucose : '--'}
+              </span>
+              <span className="text-[10px] text-blue-300/80">mg/dL</span>
+              {glucDiff !== 0 && (
+                <span className="text-[10px] font-bold text-sky-300">
+                  ({glucDiff > 0 ? '+' : ''}{glucDiff})
+                </span>
+              )}
+            </div>
+
+            {/* Glasgow */}
+            <div
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-colors ${
+                isLowGlasgow
+                  ? 'bg-rose-950/50 border-rose-700/70 text-rose-200'
+                  : 'bg-[#07132B] border-blue-900/70 text-white'
+              }`}
+            >
+              <Brain className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+              <span className="text-[10px] uppercase font-sans text-blue-300">Glasgow</span>
+              <span
+                className={`text-sm font-bold font-mono tracking-tight ${
+                  isLowGlasgow ? 'text-rose-300' : vitals.glasgow < 15 ? 'text-amber-400' : 'text-white'
+                }`}
+              >
+                {vitals.glasgow}/15
+              </span>
+              {gcsDiff !== 0 && (
+                <span className={`text-[10px] font-bold ${gcsDiff > 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
+                  ({gcsDiff > 0 ? '+' : ''}{gcsDiff})
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {evolutionState && (evolutionState.activeAlerts.length > 0 || evolutionState.trajectory !== 'estable') && (
+          <div
+            className={`mt-2 px-3 py-1.5 rounded-lg border text-[11px] flex flex-wrap items-center justify-between gap-2 ${
+              evolutionState.trajectory === 'critico' || evolutionState.trajectory === 'deterioro'
+                ? 'bg-rose-950/60 border-rose-600/70 text-rose-100'
+                : evolutionState.trajectory === 'mejorando'
+                  ? 'bg-emerald-950/50 border-emerald-600/60 text-emerald-100'
+                  : 'bg-[#07132B] border-amber-600/60 text-amber-100'
+            }`}
+          >
+            <div className="flex items-center gap-1.5 min-w-0">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-300" />
+              <span className="font-semibold">
+                {evolutionState.activeAlerts[0] || evolutionState.summaryNote}
+              </span>
+            </div>
+            <span className="text-[10px] font-mono uppercase tracking-wider opacity-90 shrink-0">
+              Evolución: {evolutionState.trajectory}
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
